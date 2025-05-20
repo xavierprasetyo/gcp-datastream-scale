@@ -18,7 +18,6 @@ resource "google_datastream_stream" "stream" {
     source_config {
         source_connection_profile = var.source_connection_profile_name
         postgresql_source_config {
-            max_concurrent_backfill_tasks = 12
             publication      = var.publication_name
             replication_slot = var.replication_slot_name
             dynamic "include_objects" {
@@ -86,20 +85,6 @@ resource "google_datastream_stream" "stream" {
             source_hierarchy_datasets {
                 dataset_template {
                    location = "asia-southeast1"
-                }
-            }
-        }
-    }
-
-    backfill_all {
-        postgresql_excluded_objects {
-            postgresql_schemas {
-                schema = "schema"
-                postgresql_tables {
-                    table = "table"
-                    postgresql_columns {
-                        column = "column"
-                    }
                 }
             }
         }
