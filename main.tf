@@ -72,18 +72,6 @@ resource "google_datastream_stream" "streams" {
   dynamic "backfill_all" {
     for_each = each.value.backfill_strategy == "all" ? [1] : []
     content {
-      postgresql_excluded_objects {
-        // This block is required even if empty when backfill_all is used.
-        // You can add specific exclusions for backfill if needed, similar to stream-level exclusions.
-        // For simplicity, keeping it minimal.
-        dynamic "postgresql_schemas" {
-          for_each = [] # No specific backfill exclusions by default in this template
-          content {
-            schema = postgresql_schemas.value.schema
-            # Add table/column exclusions if necessary for backfill
-          }
-        }
-      }
     }
   }
 
