@@ -38,12 +38,12 @@ datastream_configs = [
     bq_dataset_id_prefix = "sales_stream_" // TODO: Adjust BigQuery dataset ID prefix
     bq_dataset_location  = "asia-southeast1" // TODO: Replace with your desired BigQuery dataset location (e.g., "US", "EU")
     backfill_strategy    = "all" // Options: "all" or "none"
-    create_paused        = false // Options: true or false
+    run_immediately        = false // Options: true or false
   },
   {
     stream_id                  = "pg-to-bq-stream-02" // TODO: Adjust stream_id if needed
     display_name               = "PostgreSQL to BigQuery Stream 2 (Marketing Data - No Backfill)" // TODO: Adjust display_name
-    location                   = "us-east1" // TODO: Replace with your desired Datastream stream location
+    location                   = "asia-southeast1" // TODO: Replace with your desired Datastream stream location
     source_connection_profile  = "projects/your-gcp-project-id/locations/us-east1/connectionProfiles/pg-source-profile-marketing" // TODO: Replace with your actual source connection profile path
     destination_connection_profile = "projects/your-gcp-project-id/locations/us-east1/connectionProfiles/bq-destination-profile-marketing" // TODO: Replace with your actual destination connection profile path
     publication_name               = "your_pg_publication_for_stream_2", // TODO: Replace with actual publication name for this stream
@@ -65,8 +65,8 @@ datastream_configs = [
     // No postgres_exclude_objects for this stream, so it's omitted (optional)
 
     bq_dataset_id_prefix = "mktg_stream_" // TODO: Adjust BigQuery dataset ID prefix
-    bq_dataset_location  = "US" // TODO: Replace with your desired BigQuery dataset location
-    backfill_strategy    = "none" // Options: "all" or "none"
-    create_paused        = true   // Options: true or false
+    bq_dataset_location  = "asia-southeast1" // TODO: Replace with your desired BigQuery dataset location
+    backfill_strategy    = "all" // Options: "all" or "none"
+    run_immediately      = false   // Options: true or false
   }
 ]
