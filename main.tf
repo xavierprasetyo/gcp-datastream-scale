@@ -1,92 +1,96 @@
-terraform {
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 5.0"
-    }
+locals {
+  # Helper to transform the list of objects into a map keyed by stream_id for for_each
+  datastream_map = {
+    for config in var.datastream_configs : config.stream_id => config
   }
 }
 
-resource "google_datastream_stream" "stream" {
-  for_each = var.stream_configurations
+resource "google_datastream_stream" "streams" {
+  for_each = local.datastream_map
 
-  display_name  = each.value.display_name
-  location      = "asia-southeast1" # Assuming location is static, or it can be added to stream_configurations
-  stream_id     = each.key
-  desired_state = "RUNNING"
+  provider     = google-beta # Ensure you are using a provider alias that supports Datastream if necessary
+  project      = var.project_id # Assuming you have a project_id variable defined elsewhere
+  location     = each.value.location
+  stream_id    = each.value.stream_id
+  display_name = each.value.display_name
 
-    source_config {
-        source_connection_profile = var.source_connection_profile_name
-        postgresql_source_config {
-            publication      = var.publication_name
-            replication_slot = var.replication_slot_name
-            dynamic "include_objects" {
-              for_each = each.value.include_objects != null ? [each.value.include_objects] : []
+  source_config {
+    source_connection_profile = each.value.source_connection_profile
+    postgresql_source_config {
+      include_objects {
+        dynamic "postgresql_schemas" {
+          for_each = each.value.postgres_include_schemas
+          content {
+            schema = postgresql_schemas.value.schema
+            dynamic "postgresql_tables" {
+              for_each = postgresql_schemas.value.tables
               content {
-                dynamic "postgresql_schemas" {
-                  for_each = include_objects.value.postgresql_schemas
-                  iterator = schema_item
+                table   = postgresql_tables.value.table_name
+                dynamic "postgresql_columns" {
+                  for_each = postgresql_tables.value.columns != null ? postgresql_tables.value.columns : []
                   content {
-                    schema = schema_item.value.schema
-                    dynamic "postgresql_tables" {
-                      for_each = schema_item.value.postgresql_tables
-                      iterator = table_item
-                      content {
-                        table = table_item.value.table
-                        dynamic "postgresql_columns" {
-                          for_each = table_item.value.postgresql_columns != null ? table_item.value.postgresql_columns : []
-                          iterator = column_item
-                          content {
-                            column    = column_item.value.column
-                            data_type = column_item.value.data_type
-                          }
-                        }
-                      }
-                    }
+                    column = postgresql_columns.value
                   }
                 }
               }
             }
-
-            dynamic "exclude_objects" {
-              for_each = each.value.exclude_objects != null ? [each.value.exclude_objects] : []
+          }
+        }
+      }
+      dynamic "exclude_objects" {
+        for_each = each.value.postgres_exclude_objects != null ? each.value.postgres_exclude_objects : []
+        content {
+          postgresql_schemas {
+            schema = exclude_objects.value.schema
+            dynamic "postgresql_tables" {
+              for_each = exclude_objects.value.tables != null ? exclude_objects.value.tables : []
               content {
-                dynamic "postgresql_schemas" {
-                  for_each = exclude_objects.value.postgresql_schemas
-                  iterator = schema_item
-                  content {
-                    schema = schema_item.value.schema
-                    dynamic "postgresql_tables" {
-                      for_each = schema_item.value.postgresql_tables
-                      iterator = table_item
-                      content {
-                        table = table_item.value.table
-                        dynamic "postgresql_columns" {
-                          for_each = table_item.value.postgresql_columns != null ? table_item.value.postgresql_columns : []
-                          iterator = column_item
-                          content {
-                            column    = column_item.value.column
-                            data_type = column_item.value.data_type
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
+                table = postgresql_tables.value
               }
             }
+          }
         }
+      }
+      publication      = each.value.publication_name
+      replication_slot = each.value.replication_slot_name
     }
+  }
 
-    destination_config {
-        destination_connection_profile = var.destination_connection_profile_name
-        bigquery_destination_config {
-            data_freshness = "900s"
-            source_hierarchy_datasets {
-                dataset_template {
-                   location = "asia-southeast1"
-                }
-            }
+  destination_config {
+    destination_connection_profile = each.value.destination_connection_profile
+    bigquery_destination_config {
+      source_hierarchy_datasets {
+        dataset_template {
+          location       = each.value.bq_dataset_location
+          dataset_id_prefix = each.value.bq_dataset_id_prefix
         }
+      }
+      data_freshness = each.value.bq_data_freshness // Example: 15 minutes, adjust as needed
     }
+  }
+
+  dynamic "backfill_all" {
+    for_each = each.value.backfill_strategy == "all" ? [1] : []
+    content {
+      postgresql_excluded_objects {
+        // This block is required even if empty when backfill_all is used.
+        // You can add specific exclusions for backfill if needed, similar to stream-level exclusions.
+        // For simplicity, keeping it minimal.
+        dynamic "postgresql_schemas" {
+          for_each = [] # No specific backfill exclusions by default in this template
+          content {
+            schema = postgresql_schemas.value.schema
+            # Add table/column exclusions if necessary for backfill
+          }
+        }
+      }
+    }
+  }
+
+  dynamic "backfill_none" {
+    for_each = each.value.backfill_strategy == "none" ? [1] : []
+    content {}
+  }
+
+  desired_state = each.value.run_immediately ? "RUNNING" : "NOT_STARTED"
 }
