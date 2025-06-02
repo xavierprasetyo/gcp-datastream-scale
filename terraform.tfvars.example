@@ -1,79 +1,153 @@
 # Example for datastream_configs variable
 # Remove this comment and uncomment the block below to use.
-# Ensure project_id, publication_name, and replication_slot_name are also defined in your actual .tfvars file or elsewhere.
+# Ensure project_id is also defined in your actual .tfvars file.
 
 /*
 project_id = "your-gcp-project-id"
-// publication_name and replication_slot_name are now per-stream
 
 datastream_configs = [
   {
+    # Stream 1: Uses a single target dataset (bq_target_dataset_id)
+    # Tables 'orders' and 'customers' from the 'sales' schema will be created in 'sales_destination_dataset'.
     stream_id                  = "pg-to-bq-stream-01"
     display_name               = "PostgreSQL to BigQuery Stream 1 (Sales Data)"
     location                   = "us-central1"
     source_connection_profile  = "projects/your-gcp-project-id/locations/us-central1/connectionProfiles/pg-source-profile-example"
     destination_connection_profile = "projects/your-gcp-project-id/locations/us-central1/connectionProfiles/bq-destination-profile-example"
-    publication_name               = "your_pg_publication_for_stream_1",
-    replication_slot_name          = "your_pg_slot_for_stream_1",
+    publication_name               = "pg_publication_sales"
+    replication_slot_name          = "pg_slot_sales"
 
     postgres_include_schemas = [
       {
-        schema = "sales",
+        schema = "sales", # Source PostgreSQL schema
         tables = [
           {
-            table_name = "orders",
-            columns    = ["order_id", "customer_id", "order_date", "total_amount"]
+            table_name = "orders",                                       # Source PostgreSQL table name
+            columns    = ["order_id", "customer_id", "order_date", "total_amount"], # Optional: Source columns to include. Empty or null means all columns.
+            target_table_name = "bq_orders_table",                     # Optional: Target BQ table name. Defaults to source 'table_name' if omitted.
+            schema_fields = [                                          # Required: BigQuery schema definition for the target table.
+              { name = "order_id", type = "INTEGER", mode = "REQUIRED", description = "Primary key for orders" },
+              { name = "customer_id", type = "INTEGER", description = "Foreign key to customers table" },
+              { name = "order_date", type = "TIMESTAMP", description = "Timestamp of the order" },
+              { name = "total_amount", type = "NUMERIC", description = "Total amount of the order" }
+              # Datastream metadata columns (e.g., uuid, source_timestamp) are typically added by Datastream.
+              # Define them here if you need to customize their type/mode or ensure they are part of the Terraform-managed schema.
+            ],
+            time_partitioning = {                                      # Optional: BigQuery time partitioning configuration.
+              type  = "DAY"                                            # Partitioning type (e.g., DAY, HOUR, MONTH, YEAR).
+              field = "order_date"                                     # The BQ field for partitioning (must be TIMESTAMP or DATE type in schema_fields).
+              require_partition_filter = true                          # Optional: Require partition filter for queries. Defaults to false.
+              # expiration_ms = null                                   # Optional: Partition expiration in milliseconds.
+            },
+            clustering_fields = ["customer_id"]                        # Optional: List of fields for BigQuery clustering.
           },
           {
-            table_name = "customers" # All columns from customers table
+            table_name = "customers",                                  # Source PostgreSQL table name
+            # columns = null,                                          # Example: All columns from source 'customers' table.
+            target_table_name = "bq_customers_table",
+            schema_fields = [
+              { name = "customer_id", type = "INTEGER", mode = "REQUIRED" },
+              { name = "customer_name", type = "STRING" },
+              { name = "email", type = "STRING" },
+              { name = "registration_date", type = "DATE" }
+            ],
+            time_partitioning = null,                                  # Example: No time partitioning for this table.
+            clustering_fields = ["customer_name"]
           }
         ]
       },
       {
-        schema = "inventory" # All tables and columns from inventory schema
+        schema = "inventory", # Source PostgreSQL schema
+        tables = [
+          {
+            table_name = "products",
+            schema_fields = [
+              { name = "product_id", type = "INTEGER", mode = "REQUIRED" },
+              { name = "product_name", type = "STRING" },
+              { name = "category", type = "STRING" },
+              { name = "price", type = "NUMERIC" }
+            ]
+            # No time_partitioning or clustering_fields specified, so table will be standard.
+          }
+        ]
+        # This entire schema 'inventory' and its tables will be part of the 'sales_destination_dataset'.
       }
     ]
 
-    postgres_exclude_objects = [
+    postgres_exclude_objects = [ # Optional: Objects to exclude from the stream.
       {
         schema = "sales",
-        tables = ["temporary_orders_archive"] # Exclude specific table from sales schema
+        tables = ["temporary_orders_archive"] # List of table names (strings) to exclude from this schema.
       }
     ]
 
-    bq_dataset_id_prefix = "sales_stream_"
-    bq_dataset_location  = "US"
-    backfill_strategy    = "all"
-    create_paused        = false
+    # BigQuery Destination Configuration for Stream 1
+    bq_target_dataset_id = "sales_destination_dataset" # All tables from this stream go here. Dataset should ideally exist or be managed by a separate BQ TF config if shared.
+                                                       # If this Terraform creates it due to other streams using prefix mode for the same dataset name, that's also possible.
+    # bq_dataset_id_prefix = null, # Ignored because bq_target_dataset_id is set.
+    bq_dataset_location  = "US", # Primarily used if bq_target_dataset_id is null and bq_dataset_id_prefix is active.
+                                 # If bq_target_dataset_id is set, this location should match the target dataset's location.
+    bq_data_freshness    = "900s", # 15 minutes
+    backfill_strategy    = "all",  # or "none"
+    run_immediately      = true
   },
+
   {
+    # Stream 2: Uses bq_dataset_id_prefix (source hierarchy mode).
+    # Datasets like "mktg_stream_marketing" will be created by this Terraform.
+    # Tables 'campaigns' and 'leads' from 'marketing' schema will be in 'mktg_stream_marketing'.
     stream_id                  = "pg-to-bq-stream-02"
-    display_name               = "PostgreSQL to BigQuery Stream 2 (Marketing Data - No Backfill)"
+    display_name               = "PostgreSQL to BigQuery Stream 2 (Marketing - Source Hierarchy)"
     location                   = "us-east1"
     source_connection_profile  = "projects/your-gcp-project-id/locations/us-east1/connectionProfiles/pg-source-profile-marketing"
     destination_connection_profile = "projects/your-gcp-project-id/locations/us-east1/connectionProfiles/bq-destination-profile-marketing"
-    publication_name               = "your_pg_publication_for_stream_2",
-    replication_slot_name          = "your_pg_slot_for_stream_2",
+    publication_name               = "pg_publication_marketing"
+    replication_slot_name          = "pg_slot_marketing"
 
     postgres_include_schemas = [
       {
-        schema = "marketing",
+        schema = "marketing", # Source PostgreSQL schema name
         tables = [
           {
-            table_name = "campaigns"
+            table_name = "campaigns", # Source table name. Target BQ table will be 'campaigns'.
+            schema_fields = [
+              { name = "campaign_id", type = "INTEGER", mode = "REQUIRED" },
+              { name = "campaign_name", type = "STRING" },
+              { name = "start_date", type = "DATE" },
+              { name = "end_date", type = "DATE" },
+              { name = "budget", type = "NUMERIC" }
+            ],
+            time_partitioning = {
+              type  = "MONTH",
+              field = "start_date" # This BQ field must exist in schema_fields with DATE or TIMESTAMP type.
+            }
+            # clustering_fields = null # Example: No clustering for this table.
           },
           {
-            table_name = "leads"
+            table_name = "leads",
+            schema_fields = [
+              { name = "lead_id", type = "INTEGER", mode = "REQUIRED" },
+              { name = "campaign_id", type = "INTEGER" },
+              { name = "lead_source", type = "STRING" },
+              { name = "conversion_date", type = "TIMESTAMP" }
+            ],
+            time_partitioning = {
+              type  = "DAY",
+              field = "conversion_date"
+            }
           }
         ]
       }
     ]
-    // No postgres_exclude_objects for this stream, so it's omitted (optional)
+    # postgres_exclude_objects = null, # Optional: No specific excludes for this stream.
 
-    bq_dataset_id_prefix = "mktg_stream_"
-    bq_dataset_location  = "US"
-    backfill_strategy    = "none" # No backfill for this stream
-    create_paused        = true   # Create this stream in a paused state
+    # BigQuery Destination Configuration for Stream 2
+    bq_target_dataset_id = null # Set to null to enable source hierarchy mode.
+    bq_dataset_id_prefix = "mktg_stream_" # Datasets like "mktg_stream_marketing" will be created.
+    bq_dataset_location  = "US"   # Location for these dynamically created datasets.
+    bq_data_freshness    = "1800s", # 30 minutes
+    backfill_strategy    = "none",
+    run_immediately      = false
   }
 ]
 */
