@@ -1,72 +1,59 @@
-project_id = "your-gcp-project-id" // TODO: Replace with your actual GCP project ID
+project_id = "your-gcp-project-id-here" // TODO: Replace with your actual GCP Project ID
 
 datastream_configs = [
   {
-    stream_id                  = "pg-to-bq-stream-01" // TODO: Adjust stream_id if needed
-    display_name               = "PostgreSQL to BigQuery Stream 1 (Sales Data)" // TODO: Adjust display_name
-    location                   = "asia-southeast1" // TODO: Replace with your desired Datastream stream location
-    source_connection_profile  = "projects/your-gcp-project-id/locations/us-central1/connectionProfiles/pg-source-profile-example" // TODO: Replace with your actual source connection profile path
-    destination_connection_profile = "projects/your-gcp-project-id/locations/us-central1/connectionProfiles/bq-destination-profile-example" // TODO: Replace with your actual destination connection profile path
-    publication_name               = "your_pg_publication_for_stream_1", // TODO: Replace with actual publication name for this stream
-    replication_slot_name          = "your_pg_slot_for_stream_1",      // TODO: Replace with actual replication slot name for this stream
+    # Sample Stream: PostgreSQL 'public.users' table to a partitioned BigQuery table
+    stream_id                  = "pg-users-to-bq-example"
+    display_name               = "PostgreSQL Users to BigQuery Example"
+    location                   = "us-central1" // TODO: Update to your desired Datastream location
+    source_connection_profile  = "projects/your-gcp-project-id-here/locations/us-central1/connectionProfiles/your-pg-source-profile" // TODO: Update
+    destination_connection_profile = "projects/your-gcp-project-id-here/locations/us-central1/connectionProfiles/your-bq-dest-profile" // TODO: Update
+    publication_name               = "tf_example_pub_users" // TODO: Ensure this publication exists on your PG source for the included tables
+    replication_slot_name          = "tf_example_slot_users" // TODO: Ensure this replication slot exists on your PG source
 
     postgres_include_schemas = [
       {
-        schema = "sales", // TODO: Adjust schema name
+        schema = "public", // Source PostgreSQL schema
         tables = [
           {
-            table_name = "orders", // TODO: Adjust table name
-            columns    = ["order_id", "customer_id", "order_date", "total_amount"] // TODO: Adjust columns or remove for all columns
-          },
-          {
-            table_name = "customers" // TODO: Adjust table name (all columns will be included)
-          }
-        ]
-      },
-      {
-        schema = "inventory" // TODO: Adjust schema name (all tables and columns will be included)
-      }
-    ]
-
-    postgres_exclude_objects = [ // Optional: remove or adjust if not needed
-      {
-        schema = "sales", // TODO: Adjust schema name for exclusion
-        tables = ["temporary_orders_archive"] // TODO: Adjust tables to exclude
-      }
-    ]
-
-    bq_dataset_id_prefix = "sales_stream_" // TODO: Adjust BigQuery dataset ID prefix
-    bq_dataset_location  = "asia-southeast1" // TODO: Replace with your desired BigQuery dataset location (e.g., "US", "EU")
-    backfill_strategy    = "all" // Options: "all" or "none"
-    run_immediately        = false // Options: true or false
-  },
-  {
-    stream_id                  = "pg-to-bq-stream-02" // TODO: Adjust stream_id if needed
-    display_name               = "PostgreSQL to BigQuery Stream 2 (Marketing Data - No Backfill)" // TODO: Adjust display_name
-    location                   = "asia-southeast1" // TODO: Replace with your desired Datastream stream location
-    source_connection_profile  = "projects/your-gcp-project-id/locations/us-east1/connectionProfiles/pg-source-profile-marketing" // TODO: Replace with your actual source connection profile path
-    destination_connection_profile = "projects/your-gcp-project-id/locations/us-east1/connectionProfiles/bq-destination-profile-marketing" // TODO: Replace with your actual destination connection profile path
-    publication_name               = "your_pg_publication_for_stream_2", // TODO: Replace with actual publication name for this stream
-    replication_slot_name          = "your_pg_slot_for_stream_2",      // TODO: Replace with actual replication slot name for this stream
-
-    postgres_include_schemas = [
-      {
-        schema = "marketing", // TODO: Adjust schema name
-        tables = [
-          {
-            table_name = "campaigns" // TODO: Adjust table name
-          },
-          {
-            table_name = "leads" // TODO: Adjust table name
+            table_name = "users",                                        // Source PostgreSQL table name
+            columns    = null,                                           // Include all columns from the source table
+            target_table_name = "bq_users_partitioned",                  // Target BigQuery table name
+            schema_fields = [                                            // BigQuery schema definition
+              { name = "user_id", type = "INTEGER", mode = "REQUIRED", description = "Primary key for users" },
+              { name = "username", type = "STRING", description = "User's login name" },
+              { name = "email", type = "STRING", description = "User's email address" },
+              { name = "created_at", type = "TIMESTAMP", description = "Timestamp of user creation" },
+              { name = "last_login", type = "TIMESTAMP", description = "Timestamp of last user login" }
+              // Datastream typically adds metadata columns like 'datastream_metadata'.
+              // If you need to manage them via Terraform schema, define them here.
+              // e.g., { name = "datastream_metadata", type = "RECORD", mode = "NULLABLE", fields = [
+              //   { name = "uuid", type = "STRING" }, { name = "source_timestamp", type = "INTEGER" }
+              // ]}
+            ],
+            time_partitioning = {                                        // BigQuery time partitioning configuration
+              type  = "DAY",                                             // Partition by day
+              field = "created_at",                                      // Partition on the 'created_at' BQ field
+              require_partition_filter = true
+            },
+            clustering_fields = ["email"]                                // Cluster by the 'email' BQ field
           }
         ]
       }
     ]
-    // No postgres_exclude_objects for this stream, so it's omitted (optional)
 
-    bq_dataset_id_prefix = "mktg_stream_" // TODO: Adjust BigQuery dataset ID prefix
-    bq_dataset_location  = "asia-southeast1" // TODO: Replace with your desired BigQuery dataset location
-    backfill_strategy    = "all" // Options: "all" or "none"
-    run_immediately      = false   // Options: true or false
+    # postgres_exclude_objects = [] # No excludes for this simple example
+
+    # BigQuery Destination Configuration
+    bq_target_dataset_id = "example_datastream_output" // TODO: Replace with your target BQ dataset ID. This dataset should exist or be managed elsewhere.
+                                                       // If using prefix mode instead, set this to null and define bq_dataset_id_prefix.
+    bq_dataset_location  = "us-central1"                 // Should match the location of bq_target_dataset_id or where prefixed datasets will be created. TODO: Update if needed.
+    bq_data_freshness    = "900s"                        // Data freshness (e.g., 15 minutes)
+    backfill_strategy    = "all"
+    run_immediately      = true
   }
 ]
+
+# Note: Replace placeholder values (marked with TODO) with your actual configuration details.
+# This file provides a basic runnable example. For more complex scenarios or multiple streams,
+# refer to terraform.tfvars.example.
