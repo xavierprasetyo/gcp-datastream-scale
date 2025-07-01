@@ -1,0 +1,28 @@
+project_id = "your-gcp-project-id"
+datastream_configs = [
+  {
+    stream_id          = "example-stream"
+    display_name       = "Example Stream"
+    location           = "us-central1"
+    source_connection_profile = "projects/your-gcp-project-id/locations/us-central1/connectionProfiles/your-source-profile"
+    destination_connection_profile = "projects/your-gcp-project-id/locations/us-central1/connectionProfiles/your-destination-profile"
+    publication_name               = "your-publication"
+    replication_slot_name          = "your-replication-slot"
+    postgres_include_schemas = [
+      {
+        schema = "public"
+        tables = [
+          {
+            table_name = "users"
+            schema_fields = [
+              { name = "id", type = "INTEGER" },
+              { name = "name", type = "STRING" }
+            ]
+          }
+        ]
+      }
+    ]
+    bq_dataset_id_prefix = "pg_stream_"
+    bq_dataset_location  = "US"
+  }
+]

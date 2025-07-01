@@ -2,6 +2,7 @@ variable "project_id" {
   description = "The GCP project ID where resources will be deployed."
   type        = string
 }
+
 variable "datastream_configs" {
   description = "Configuration for multiple Datastream streams from PostgreSQL to BigQuery. Includes definitions for source objects and corresponding target BigQuery table schemas and configurations."
   type = list(object({
@@ -25,6 +26,11 @@ variable "datastream_configs" {
           mode = optional(string, "NULLABLE")
           description = optional(string)
         }))
+        table_constraints = optional(object({   // Optional: BigQuery time partitioning configuration.
+          primary_key = optional(object({
+            columns = list(string)
+          }), null)
+        }), null)
         time_partitioning = optional(object({   // Optional: BigQuery time partitioning configuration.
           type                       = string // e.g., "DAY", "HOUR", "MONTH", "YEAR"
           field                      = string // The field to use for partitioning.
@@ -34,6 +40,8 @@ variable "datastream_configs" {
         clustering_fields = optional(list(string), null) // Optional: List of fields for BigQuery clustering.
       })), [])
     }))
+
+    max_concurrent_backfill_tasks = optional(number, 15)
 
     // PostgreSQL source specific details for exclude_objects
     postgres_exclude_objects = optional(list(object({

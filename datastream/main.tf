@@ -1,3 +1,32 @@
+terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = ">= 4.0.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = ">= 4.0.0"
+    }
+  }
+}
+
+provider "google" {
+  project = var.project_id
+}
+
+provider "google-beta" {
+  project = var.project_id
+}
+
+data "terraform_remote_state" "sql" {
+  backend = "local"
+
+  config = {
+    path = "../cloud_sql/terraform.tfstate"
+  }
+}
+
 locals {
   datastream_metadata_field = {
     name        = "datastream_metadata"
@@ -54,6 +83,7 @@ locals {
               table_resource_schema_fields   = pg_table.schema_fields
               table_resource_time_partitioning = pg_table.time_partitioning
               table_resource_clustering_fields = pg_table.clustering_fields
+              table_resource_constraints     = pg_table.table_constraints
               stream_id_ref                  = stream_config_key // Used for depends_on in the stream resource
             }
         } // End of map comprehension
@@ -138,6 +168,31 @@ resource "google_bigquery_table" "all_tables" {
 
   clustering = each.value.table_resource_clustering_fields # This should be a list of strings
 
+  table_constraints {
+    dynamic "primary_key" {
+      for_each = each.value.table_resource_constraints != null && each.value.table_resource_constraints.primary_key != null ? [each.value.table_resource_constraints.primary_key] : []
+      content {
+        columns = primary_key.value.columns
+      }
+    }
+
+    # dynamic "foreign_keys" {
+    #   for_each = each.value.table_resource_constraints != null && lookup(each.value.table_resource_constraints, "foreign_keys", null) != null ? each.value.table_resource_constraints.foreign_keys : []
+    #   iterator = fk
+    #   content {
+    #     column_references {
+    #       referencing_column = fk.value.column
+    #       referenced_column  = fk.value.foreign_column
+    #     }
+    #     referenced_table {
+    #       project_id = each.value.table_resource_project_id
+    #       dataset_id = each.value.table_resource_dataset_id_short
+    #       table_id   = fk.value.foreign_table
+    #     }
+    #   }
+    # }
+  }
+
   deletion_protection = false # REVIEW: Set to true for production tables if needed
 
   labels = {
@@ -193,6 +248,9 @@ resource "google_datastream_stream" "streams" {
           }
         }
       }
+
+      max_concurrent_backfill_tasks = each.value.max_concurrent_backfill_tasks
+
       dynamic "exclude_objects" {
         # Create this block only if postgres_exclude_objects is defined and not empty
         for_each = (each.value.postgres_exclude_objects != null && length(each.value.postgres_exclude_objects) > 0) ? [1] : []
@@ -242,6 +300,7 @@ resource "google_datastream_stream" "streams" {
             location          = each.value.bq_dataset_location
             dataset_id_prefix = each.value.bq_dataset_id_prefix
           }
+
         }
       }
       data_freshness = each.value.bq_data_freshness
@@ -262,6 +321,6 @@ resource "google_datastream_stream" "streams" {
 
   # Corrected depends_on (replaces original lines 223-226)
   depends_on = [
-    google_bigquery_table.all_tables
+    google_bigquery_table.all_tables,
   ]
 }
